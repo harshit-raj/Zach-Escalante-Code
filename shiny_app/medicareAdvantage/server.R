@@ -37,6 +37,16 @@ shinyServer(function(input, output, session) {
       # filter(State_FIPS == input$state_tab2 & FIPS == input$county_tab2)
   })
   
+  #########################################HR
+  county_dd <- reactive({
+    req(input$county_tab2)
+    df_county %>%
+      filter(FIPS == input$county_tab2) %>%
+      group_by(Parent_Organization) %>%
+      summarise_if(is.numeric, funs(sum))
+    # filter(State_FIPS == input$state_tab2 & FIPS == input$county_tab2)
+  })
+  ###############################
   
   #### PANEL: TAB 1, RHS, INPUT: "TYPE", UPDATE: "SELECT DEMOGRAPHIC" #####
   observeEvent(input$scale, {
@@ -249,10 +259,40 @@ shinyServer(function(input, output, session) {
       xlab = "",
       col = wes_palette(11),
       names.arg = labels_payers,
-      las = 2
+      las = 2,
+      horiz = TRUE
     )}
     
     
   })
+  
+  output$TOP_10_COUNTY_DD <- renderPlot({
+    #req(input$state_tab2,cancelOutput = TRUE)
+    #req(input$state_tab2)
+    
+    top_10_payers = head(county_dd()[ order(county_dd()[[3]], decreasing = TRUE),], 10)[[3]]
+    labels_payers = head(county_dd()[ order(county_dd()[[3]], decreasing = TRUE),], 10)[[1]]
+    #top_10_payers <- head(county_ts()[, 5, drop = TRUE], n = 10)
+    #labels_payers <- head(county_ts()[, 4, drop = TRUE], n = 10)
+    
+    # Render a barplot
+    par(mar = c(15, 5, 1, 1))
+    #req(as.numeric(top_10_payers))
+    if(req(as.numeric(top_10_payers))){
+      barplot(
+        as.numeric(top_10_payers),
+        main = "",
+        xlab = "",
+        col = wes_palette(11),
+        names.arg = labels_payers,
+        las = 2,
+        horiz = TRUE
+      )}
+    
+    
+  })
+  
+  
+  
   
 })

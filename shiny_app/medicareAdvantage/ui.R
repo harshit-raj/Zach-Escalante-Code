@@ -257,7 +257,8 @@ navbarPage(
           placeholder = "Choose an option",
           onInitialize = I('function() { this.setValue(""); }')
         )
-      )
+      ),
+      plotOutput("TOP_10_COUNTY_DD", height = 300, width = 250)
       ),
     DT::dataTableOutput('tbl_county')
   )
