@@ -8,33 +8,79 @@
 #
 
 library(shiny)
+library(scales)
 
 # Define server logic required to draw a histogram
 shinyServer(function(input, output, session) {
   ######## REACTIVE OBJECTS ########
   
   pal <- reactive({
-    colorQuantile("viridis", stateData()[, input$value, drop = TRUE], n = 9)
+    colorQuantile("viridis", stateTotalsTab1()[, input$medicare.type, drop = TRUE], n = 9)
   })
   
-  stateData <- reactive({
+  ### TAB 1 ###
+  
+  stateTotalsTab1 <- reactive({
     df %>%
       filter(County == 'TOTAL' &
                Year == input$year_us & Month == input$month_us)
   })
   
-  state_ts <- reactive({
+  stateTSTab1 <- reactive({
     df %>%
       filter(County == 'TOTAL' & GEOID == input$select_state)
   })
   
-  county_ts <- reactive({
-    req(input$state_tab2)
+  #### PANEL: TAB 2, LHS, State Payer Time Series ####
+  state.TS.Tab2 <- reactive({
+    req(input$state.tab2)
     df_county %>%
-      filter(State_FIPS == input$state_tab2) %>%
+      filter(State_FIPS == input$state.tab2) %>%
       group_by(Parent_Organization) %>%
       summarise_if(is.numeric, funs(sum))
-      # filter(State_FIPS == input$state_tab2 & FIPS == input$county_tab2)
+      # filter(State_FIPS == input$state.tab2 & FIPS == input$county.tab2)
+  })
+
+  state.top.payer.ts.tab2 <- reactive({
+    req(state.TS.Tab2())
+    # Use dplyr to sort by last month's numbers
+    county.df <- state.TS.Tab2() %>%
+      arrange(desc(!! sym(colnames(state.TS.Tab2()[3])))) %>%  # sort based on last months' values
+      select (-c(FIPS))
+    # Make sure to drop unnecessary columns
+    # Take the top-10 payers by market share
+    county.df <- head(county.df, 10)
+    
+  })
+  
+  #### PANEL: TAB 2, RHS, County Payer Time Series ####
+  county.ts.tab2 <- reactive({
+    req(input$state.tab2)
+    df_county %>%
+      filter(State_FIPS == input$state.tab2 & FIPS == input$county.tab2) %>%
+      group_by(Parent_Organization) %>%
+      summarise_if(is.numeric, funs(sum))
+  })
+  
+  county.top.payer.ts.tab2 <- reactive({
+    req(county.ts.tab2())
+    # Use dplyr to sort by last month's numbers
+    county.df <- county.ts.tab2() %>%
+      arrange(desc(!! sym(colnames(county.ts.tab2()[3])))) %>%  # sort based on last months' values
+      select (-c(FIPS))
+    # Make sure to drop unnecessary columns
+    # Take the top-10 payers by market share
+    county.df <- head(county.df, 10)
+    
+  })
+  
+  #### PANEL: TAB 3, Main Panel, State/County Payer Time Series ####
+  state.county.ts.tab3 <- reactive({
+    req(input$state.tab3)
+    df_county %>%
+      filter(State_FIPS == input$state.tab3 & FIPS == input$county.tab3) %>%
+      group_by(Parent_Organization) %>%
+      summarise_if(is.numeric, funs(sum))
   })
   
   
@@ -53,7 +99,7 @@ shinyServer(function(input, output, session) {
       )
     }
     
-    updateSelectizeInput(session, "value",
+    updateSelectizeInput(session, "medicare.type",
                          choices = x,
                          server = TRUE)
   })
@@ -78,25 +124,36 @@ shinyServer(function(input, output, session) {
                          server = TRUE)
   })
   
-  #### PANEL: TAB 2, LHS, INPUT: "state_tab2", UPDATE: "county_tab2" #####
-  observeEvent(input$state_tab2, {
+  #### PANEL: TAB 2, LHS, INPUT: "state.tab2", UPDATE: "county.tab2" #####
+  observeEvent(input$state.tab2, {
     df_county_update <- df_county %>%
-      filter(State_FIPS == input$state_tab2)
+      filter(State_FIPS == input$state.tab2)
     
     df_county_update <- unique(df_county_update$FIPS)
     
-    updateSelectizeInput(session, "county_tab2",
+    updateSelectizeInput(session, "county.tab2",
+                         choices = unique(df_county_update),
+                         server = TRUE)
+  })
+  
+  #### PANEL: TAB 3, LHS, INPUT: "state.tab3", UPDATE: "county.tab3" #####
+  observeEvent(input$state.tab3, {
+    df_county_update <- df_county %>%
+      filter(State_FIPS == input$state.tab3)
+    
+    df_county_update <- unique(df_county_update$FIPS)
+    
+    updateSelectizeInput(session, "county.tab3",
                          choices = unique(df_county_update),
                          server = TRUE)
   })
   
   ######## DATA TABLES ########
   
-  ######## PANEL 1, RHS ######
-  
-  output$tbl2 <- DT::renderDataTable({
-    req(input$value)
-    df <- stateData()[, c("State", input$value), drop = TRUE]
+  ######## TAB 1, PANEL 1, RHS ######
+  output$raw.state.totals.tab1 <- DT::renderDataTable({
+    req(input$medicare.type)
+    df <- stateTotalsTab1()[, c("State", input$medicare.type), drop = TRUE]
     
     DT::datatable(df,
                   options = list(pageLength = 8, dom = 'rtip')) %>%
@@ -105,18 +162,18 @@ shinyServer(function(input, output, session) {
                   color = 'black',
                   lineHeight = '60%') %>%
       formatCurrency(
-        input$value,
+        input$medicare.type,
         currency = "",
         interval = 3,
         mark = ","
       )
   })
   
-  output$state_ts_tbl <- DT::renderDataTable({
+  ######## TAB 1, PANEL 2, LHS ######
+  output$state.totals.ts.tab1 <- DT::renderDataTable({
     req(input$market_state)
     
-    #df_ts <- state_ts()[, c("Year", "Month", input$market_state)]
-    DT::datatable(state_ts()[, c("Year", "Month", input$market_state)],
+    DT::datatable(stateTSTab1()[, c("Year", "Month", input$market_state)],
                   options = list(pageLength = 12, dom = 'rtip')) %>%
       formatStyle(0,
                   target = 'row',
@@ -130,22 +187,43 @@ shinyServer(function(input, output, session) {
       )
   })
   
-  output$tbl_county <- DT::renderDataTable({
-    req(input$state_tab2)
-    DT::datatable(county_ts())
+  output$state.payer.ts.table.tab2 <- DT::renderDataTable({
+    req(input$state.tab2)
+    DT::datatable(state.TS.Tab2())
   })
   
-  output$TestText <- renderText({
-    input$state_tab2
+  output$state.top.payer.ts.table.tab2 <- DT::renderDataTable({
+    req(state.top.payer.ts.tab2())
+    DT::datatable(state.top.payer.ts.tab2())
+  })
+  
+  output$state.county.ts.table.tab3 <- DT::renderDataTable({
+    req(state.county.ts.tab3())
+    data.frame <- state.county.ts.tab3()
+    dates.len <- length(colnames(data.frame))
+    raw.dates <- colnames(data.frame)[3:dates.len]
+    formatted.dates <- as.character(as.Date( as.numeric (raw_dates),origin="1899-12-30"))
+    colnames(data.frame)[3:dates.len] <- formatted.dates
+    
+    DT::datatable(data.frame,
+                  options = list(dom = 'rltip')) %>%
+                formatCurrency(
+                    3:dates.len,
+                    currency = "",
+                    interval = 3,
+                    mark = ","
+                  ) %>%
+      formatRound(3:dates.len, 0)
+
   })
   
   ######## LEAFLET MAPS ########
   
-  output$myMap <- renderLeaflet({
-    req(input$value)
+  output$us.map.tab1 <- renderLeaflet({
+    req(input$medicare.type)
     medicare_market <-
       merge(us.map.state,
-            stateData()[, c("State", input$value), drop = TRUE],
+            stateTotalsTab1()[, c("State", input$medicare.type), drop = TRUE],
             by.x = "NAME",
             by.y = "State")
     
@@ -155,8 +233,8 @@ shinyServer(function(input, output, session) {
       addProviderTiles("Hydda.Base") %>%
       addPolygons(
         data = medicare_market,
-        # mydf$value will be the variable passed from the user dropdown menu in Shiny
-        fillColor = ~ pal()(medicare_market@data[, input$value, drop = TRUE]),
+        # mydf$medicare.type will be the variable passed from the user dropdown menu in Shiny
+        fillColor = ~ pal()(medicare_market@data[, input$medicare.type, drop = TRUE]),
         stroke = FALSE,
         smoothFactor = 0.2,
         fillOpacity = 0.3,
@@ -165,37 +243,37 @@ shinyServer(function(input, output, session) {
           us.map.state$NAME,
           "<br>",
           "Value: ",
-          medicare_market@data[, input$value, drop = TRUE]
+          medicare_market@data[, input$medicare.type, drop = TRUE]
         )
       )
   })
   
   output$stateMap <- renderLeaflet({
-    req(input$state_tab2)
+    req(input$state.tab2)
     leaflet() %>%
       fitBounds(
-        lng1 = min(coordinates(us.map.county[which(us.map.county$STATEFP == input$state_tab2), ])[, 1]),
+        lng1 = min(coordinates(us.map.county[which(us.map.county$STATEFP == input$state.tab2), ])[, 1]),
         lat1 = min(coordinates(us.map.county[which(us.map.county$STATEFP ==
-                                                         input$state_tab2), ])[, 2]),
+                                                         input$state.tab2), ])[, 2]),
         lng2 = max(coordinates(us.map.county[which(us.map.county$STATEFP ==
-                                                         input$state_tab2), ])[, 1]),
+                                                         input$state.tab2), ])[, 1]),
         lat2 = max(coordinates(us.map.county[which(us.map.county$STATEFP ==
-                                                         input$state_tab2), ])[, 2])
+                                                         input$state.tab2), ])[, 2])
       ) %>%
     addProviderTiles("Esri.WorldGrayCanvas") %>%
-      addPolygons(data = us.map.county[which(us.map.county$STATEFP == input$state_tab2), ])
+      addPolygons(data = us.map.county[which(us.map.county$STATEFP == input$state.tab2), ])
   })
   
   ######## GRAPHS AND PLOTS ########
   
   # Test barplot 1
   output$totalMarket <- renderPlot({
-    req(input$value)
-    state_total <- stateData() %>%
-      arrange_at(desc(stateData()[, input$value, drop = TRUE]))
+    req(input$medicare.type)
+    state_total <- stateTotalsTab1() %>%
+      arrange_at(desc(stateTotalsTab1()[, input$medicare.type, drop = TRUE]))
     
-    top_10 <- tail(stateData()[, input$value, drop = TRUE], n = 10)
-    labels <- tail(stateData()[, 1, drop = TRUE], n = 10)
+    top_10 <- tail(stateTotalsTab1()[, input$medicare.type, drop = TRUE], n = 10)
+    labels <- tail(stateTotalsTab1()[, 1, drop = TRUE], n = 10)
     
     # Render a barplot
     par(mar = c(7, 5, 1, 1))
@@ -211,8 +289,8 @@ shinyServer(function(input, output, session) {
   
   # Test barplot 2
   output$totalPercent <- renderPlot({
-    req(input$value)
-    top_10 <- tail(mydf[, input$value, drop = TRUE], n = 10)
+    req(input$medicare.type)
+    top_10 <- tail(mydf[, input$medicare.type, drop = TRUE], n = 10)
     labels <- tail(mydf[, "place", drop = TRUE], n = 10)
     
     # Render a barplot
@@ -226,33 +304,156 @@ shinyServer(function(input, output, session) {
     )
   })
   
+  #### TAB 2: LHS, top.10.payers.tab2 #####
+  output$top.10.payers.tab2 <- renderPlot({
+    
+    top_10_payers = head(state.TS.Tab2()[ order(state.TS.Tab2()[[3]], decreasing = TRUE),], 10)[[3]]
+    labels_payers = head(state.TS.Tab2()[ order(state.TS.Tab2()[[3]], decreasing = TRUE),], 10)[[1]]
+    
+    df <- data.frame(top.payers=top_10_payers,
+                     payer.labels=labels_payers)
+    
+    p <- ggplot(data=df, aes(x=payer.labels, y=top.payers, fill=top.payers)) +
+      geom_bar(stat="identity", width = 0.60) +
+      ggtitle("Top Insureres by State") +
+      scale_x_discrete(label = function(x) stringr::str_trunc(x, 12)) +  # truncate data names to 12 characters
+      scale_y_continuous(labels=comma) +            # add commas to value labels
+      theme_minimal() +                             # remove grey background
+      scale_fill_viridis() +                        # add viridis color palette
+      theme(axis.text.y = element_text(hjust=0),    # left justify labels
+            axis.title.x=element_blank(),           # remove x title
+            axis.title.y=element_blank(),           # remove y title
+            legend.position="none",                 # remove legend
+            plot.title = element_text(family = "Helvetica", face = "bold", size = (15), hjust = 0.5)) +
+      coord_flip()
+    p
+    
+  })
   
-  #### TAB 2: LHS, TOP_10_COUNTY #####
+  #### TAB 2: RHS, top.10.payers.county.tab2 #####
+  output$top.10.payers.county.tab2 <- renderPlot({
+    
+    top_10_payers = head(county.ts.tab2()[ order(county.ts.tab2()[[3]], decreasing = TRUE),], 10)[[3]]
+    labels_payers = head(county.ts.tab2()[ order(county.ts.tab2()[[3]], decreasing = TRUE),], 10)[[1]]
+    
+    df <- data.frame(top.payers=top_10_payers,
+                     payer.labels=labels_payers)
+    
+    p <- ggplot(data=df, aes(x=payer.labels, y=top.payers, fill=top.payers)) +
+      geom_bar(stat="identity", width = 0.60) +
+      ggtitle("Top Insureres by County") +
+      scale_x_discrete(label = function(x) stringr::str_trunc(x, 12)) +  # truncate data names to 12 characters
+      scale_y_continuous(labels=comma) +            # add commas to value labels
+      theme_minimal() +                             # remove grey background
+      scale_fill_viridis() +                        # add viridis color palette
+      theme(axis.text.y = element_text(hjust=0),    # left justify labels
+            axis.title.x=element_blank(),           # remove x title
+            axis.title.y=element_blank(),           # remove y title
+            legend.position="none",                 # remove legend
+            plot.title = element_text(family = "Helvetica", face = "bold", size = (15), hjust = 0.5)) +
+      coord_flip()
+    p
+    
+  })
+ 
+  #### TAB 2: LHS, state.top.payers.ts.graph #####
+  output$state.top.payers.ts.graph <- renderPlot({
+    req(state.top.payer.ts.tab2())
+    
+    # Melt the data frames
+    state.data.melt <- melt(state.top.payer.ts.tab2(), id="Parent_Organization")
+    state.data.melt$variable <- as.Date( as.numeric (as.character(state.data.melt$variable) ),origin="1899-12-30")
+    
+    # Create the plot
+    ggplot(state.data.melt, aes(variable, value, group = Parent_Organization, color = str_trunc(Parent_Organization, 12, "right"))) +
+     geom_line() + 
+      geom_point() + 
+      ggtitle("Time Series Analysis") +
+      theme_minimal() +
+      scale_y_continuous(labels=comma) +
+      scale_colour_viridis_d() +
+      guides(col = guide_legend(nrow = 3)) +
+      theme(legend.position="bottom",
+            legend.title=element_blank(),
+            axis.title.x=element_blank(),
+            axis.title.y=element_blank(),
+            plot.title = element_text(family = "Helvetica", face = "bold", size = (15), hjust = 0.5))
+  })
   
+  #### TAB 2: RHS, county.top.payers.ts.graph #####
+  output$county.top.payers.ts.graph <- renderPlot({
+    req(state.top.payer.ts.tab2())
+    
+    # Melt the data frames
+    county.data.melt <- melt(county.top.payer.ts.tab2(), id="Parent_Organization")
+    county.data.melt$variable <- as.Date( as.numeric (as.character(county.data.melt$variable) ),origin="1899-12-30")
+    
+    # Create the plot
+    ggplot(county.data.melt, aes(variable, value, group = Parent_Organization, color = str_trunc(Parent_Organization, 12, "right"))) +
+      geom_line() + 
+      geom_point() + 
+      ggtitle("Time Series Analysis") +
+      theme_minimal() +
+      scale_y_continuous(labels=comma) +
+      scale_colour_viridis_d() +
+      guides(col = guide_legend(nrow = 3)) +
+      theme(legend.position="bottom",
+            legend.title=element_blank(),
+            axis.title.x=element_blank(),
+            axis.title.y=element_blank(),
+            plot.title = element_text(family = "Helvetica", face = "bold", size = (15), hjust = 0.5))
+  })
   
-  output$TOP_10_COUNTY <- renderPlot({
-    #req(input$state_tab2,cancelOutput = TRUE)
-    #req(input$state_tab2)
+  #### TAB 2: LHS, state.ts.perc.chg.graph #####
+  output$state.ts.perc.chg.graph <- renderPlot({
+    req(state.top.payer.ts.tab2())
     
-    top_10_payers = head(county_ts()[ order(county_ts()[[3]], decreasing = TRUE),], 10)[[3]]
-    labels_payers = head(county_ts()[ order(county_ts()[[3]], decreasing = TRUE),], 10)[[1]]
-    #top_10_payers <- head(county_ts()[, 5, drop = TRUE], n = 10)
-    #labels_payers <- head(county_ts()[, 4, drop = TRUE], n = 10)
+    # Create ggplot2 graph
+    county.data.melt <- melt(state.top.payer.ts.tab2(), id="Parent_Organization")
+    county.data.melt$variable <- as.Date( as.numeric (as.character(county.data.melt$variable) ),origin="1899-12-30")
     
-    # Render a barplot
-    par(mar = c(15, 5, 1, 1))
-    #req(as.numeric(top_10_payers))
-    if(req(as.numeric(top_10_payers))){
-    barplot(
-      as.numeric(top_10_payers),
-      main = "",
-      xlab = "",
-      col = wes_palette(11),
-      names.arg = labels_payers,
-      las = 2
-    )}
+    county.melt.pct <- county.data.melt %>% group_by(Parent_Organization) %>% mutate(lvar = 100*(lag(value) - value)/lag(value))
     
+    # Create the plot
+    ggplot(county.melt.pct, aes(variable, lvar, group = Parent_Organization, color = str_trunc(Parent_Organization, 12, "right"))) +
+      geom_line() + 
+      geom_point() + 
+      ggtitle("Time Series Change (%)") +
+      theme_minimal() +
+      scale_colour_viridis_d() +
+      scale_y_continuous(labels=comma) +
+      guides(col = guide_legend(nrow = 3)) +
+      theme(legend.position="bottom",
+            legend.title=element_blank(),
+            axis.title.x=element_blank(),
+            axis.title.y=element_blank(),
+            plot.title = element_text(family = "Helvetica", face = "bold", size = (15), hjust = 0.5))
+  })
+  
+  #### TAB 2: RHS, county.ts.perc.chg.graph #####
+  output$county.ts.perc.chg.graph <- renderPlot({
+    req(state.top.payer.ts.tab2())
     
+    # Create ggplot2 graph
+    county.data.melt <- melt(county.top.payer.ts.tab2(), id="Parent_Organization")
+    county.data.melt$variable <- as.Date( as.numeric (as.character(county.data.melt$variable) ),origin="1899-12-30")
+    
+    county.melt.pct <- county.data.melt %>% group_by(Parent_Organization) %>% mutate(lvar = 100*(lag(value) - value)/lag(value))
+    
+    # Create the plot
+    ggplot(county.melt.pct, aes(variable, lvar, group = Parent_Organization, color = str_trunc(Parent_Organization, 12, "right"))) +
+      geom_line() + 
+      geom_point() + 
+      ggtitle("Time Series Change (%)") +
+      theme_minimal() +
+      scale_colour_viridis_d() +
+      scale_y_continuous(labels=comma) +
+      guides(col = guide_legend(nrow = 3)) +
+      theme(legend.position="bottom",
+            legend.title=element_blank(),
+            axis.title.x=element_blank(),
+            axis.title.y=element_blank(),
+            plot.title = element_text(family = "Helvetica", face = "bold", size = (15), hjust = 0.5))
   })
   
 })
