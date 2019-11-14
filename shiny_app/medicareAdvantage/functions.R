@@ -4,9 +4,6 @@
 
 
 topNPayerdf <- function(inputdf,orderByCol = 3,dec = TRUE,n = 10){
-  # 
-  # top_10_payers = head(county.ts.tab2()[ order(county.ts.tab2()[[3]], decreasing = TRUE),], 10)[[3]]
-  # labels_payers = head(county.ts.tab2()[ order(county.ts.tab2()[[3]], decreasing = TRUE),], 10)[[1]]
   topN = head(inputdf[ order(inputdf[[orderByCol]], decreasing = dec),], n)
   df <- data.frame(top.payers=topN[[3]],
                    payer.labels = topN[[1]])
@@ -33,3 +30,28 @@ topNPayerPlot <- function(df,plotTitle){
 
 
 
+
+meltDF2TS <- function(df,mid="Parent_Organization",originDate = "1899-12-30"){
+  meltDF <- melt(df, id=mid)
+  meltDF$variable <- as.Date( as.numeric (as.character(meltDF$variable) ),origin=originDate)
+  return(meltDF)
+}
+
+tsPlot <- function(df, Title = "Time Series Analysis"){
+  p <-ggplot(df, aes(variable, value, group = Parent_Organization, color = str_trunc(Parent_Organization, 12, "right"))) +
+        geom_line() +
+        geom_point() +
+        ggtitle("Time Series Analysis") +
+        theme_minimal() +
+        scale_y_continuous(labels=comma) +
+        scale_colour_viridis_d() +
+        guides(col = guide_legend(nrow = 3)) +
+        theme(legend.position="bottom",
+            legend.title=element_blank(),
+            axis.title.x=element_blank(),
+            axis.title.y=element_blank(),
+            plot.title = element_text(family = "Helvetica", face = "bold", size = (15), hjust = 0.5))
+  
+  return(p)
+  
+}
