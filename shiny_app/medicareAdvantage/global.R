@@ -17,6 +17,8 @@ library(readxl)
 library(tidyverse)
 library(wesanderson)
 
+source("functions.R")
+
 options(scipen=999)
 
 #County Shape files
